@@ -1,0 +1,10 @@
+<?php
+
+/**
+ * @file
+ * Configuration file for Drupal's multi-site directory aliasing feature.
+ */
+
+<% @sites.each do |name, conf| -%>
+$sites['<%= conf['sites_key'] %>'] = '<%= conf['site'] %>';
+<% end -%>

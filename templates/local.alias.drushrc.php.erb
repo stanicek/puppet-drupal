@@ -1,0 +1,18 @@
+<?php
+
+/**
+ * @file
+ * Local Drush Configuration
+ */
+
+$aliases['<%= @local_alias %>'] = array(
+<% @local_alias_values.each do |key, val| -%>
+  '<%= key %>' => '<%= val %>',
+<% end -%>
+  'command-specific' => array(
+    'sql-sync' => array(
+      'no-cache' => TRUE,
+      'create-db' => TRUE,
+    ),
+  ),
+);

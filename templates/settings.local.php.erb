@@ -1,0 +1,12 @@
+<?php
+
+/**
+ * @file
+ * Drupal site-specific configuration file.
+ */
+
+<% @settings.each do |var_name, var_hash| -%>
+<% var_hash.each do |key, val| -%>
+$<%= var_name %>['<%= key %>'] = <%= scope.function_to_php([val]) %>;
+<% end -%>
+<% end -%>

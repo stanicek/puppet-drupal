@@ -1,3 +1,9 @@
+class drupal (
+  $user = 'root',
+  $group = 'root',
+  $home = '/root',
+) {}
+
 # - key
 #   used for file directories.
 # - version
@@ -25,27 +31,7 @@ define drupal::site (
   $use_local_sites = false,
 ) {
 
-  # configure sites directory
-  if $use_local_sites {
-    $sites_file = "${drupalroot}/sites/sites.local.php"
-  }
-  else {
-    $sites_file = "${drupalroot}/sites/sites.php"
-  }
-  file { $sites_file:
-    ensure => present,
-    content => template('drupal/sites.php.erb'),
-    mode => 644,
-    owner => $drupal::user,
-    group => $drupal::group,
-  }
-  create_resources(::drupal::site::multisite, $sites, {
-    version => $version,
-    drupalroot => $drupalroot,
-    user => $::drupal::user,
-    group => $::drupal::group,
-    subscribe => Vcsrepo["${vcsroot}"],
-  })
+  require ::drupal
 
   # codebase.
   vcsrepo { $vcsroot:
@@ -53,10 +39,40 @@ define drupal::site (
     provider => git,
     source => $repo,
     revision => $repo_revision,
-    user => $drupal::user,
-    owner => $drupal::user,
-    group => $drupal::group,
+    user => $::drupal::user,
+    owner => $::drupal::user,
+    group => $::drupal::group,
   }
+
+  if $drupalroot {
+    $_drupalroot = "${vcsroot}/${drupalroot}"
+  } else {
+    $_drupalroot = $vcsroot
+  }
+
+  # configure sites directory
+  if $use_local_sites {
+    $sites_file = "${_drupalroot}/sites/sites.local.php"
+  }
+  else {
+    $sites_file = "${_drupalroot}/sites/sites.php"
+  }
+  file { $sites_file:
+    ensure => present,
+    content => template('drupal/sites.php.erb'),
+    mode => '644',
+    owner => $::drupal::user,
+    group => $::drupal::group,
+    require => Vcsrepo[$vcsroot],
+  }
+  create_resources(::drupal::site::multisite, $sites, {
+    version => $version,
+    drupalroot => $_drupalroot,
+    user => $::drupal::user,
+    group => $::drupal::group,
+    subscribe => Vcsrepo["${vcsroot}"],
+    require => Vcsrepo[$vcsroot],
+  })
 
 }
 
@@ -75,57 +91,90 @@ define drupal::site::multisite (
   $sites_key,
   $drush_uri = "http://${title}.dev",
   $write_settings = true,
-  $settings = {
-    'databases' => {
-      'default' => {
-        'default' => {
-          'driver' => 'mysql',
-          'database' => $title,
-          'username' => 'root',
-          'password' => '',
-          'host' => 'localhost',
-          'prefix' => '',
-          'collation' => 'utf8_general_ci',
-        },
-      },
-    },
-    'conf' => {
-      'file_temporary_path' => '/tmp',
-      'file_private_path' => 'sites/default/private',
-    },
-  },
+  $settings = {},
   $version = 8,
   $drupalroot = "/var/www/${title}",
-  $user => 'root',
-  $group => 'root',
+  $user = 'root',
+  $group = 'root',
 ) {
 
-  require drupal
+  require ::drupal
 
-  $sites_dir = "${drupalroot}/sites/${site}"
+  $sites_dir = "sites/${site}"
+  $site_hostname = regsubst($drush_uri, '^https?://(.*)/?$', '^\1$')
+
   case $version {
     8: {
       $settings_template = "drupal/d8.settings.local.php.erb"
+      $_settings = merge({
+        'databases' => {
+          'default' => {
+            'default' => {
+              'driver' => 'mysql',
+              'database' => $title,
+              'username' => 'root',
+              'password' => '',
+              'host' => 'localhost',
+              'prefix' => '',
+              'collation' => 'utf8_general_ci',
+            },
+          },
+        },
+        'settings' => {
+          'file_temporary_path' => '/tmp',
+          'file_public_path' => "${sites_dir}/files",
+          'file_private_path' => "${sites_dir}/private",
+          'trusted_host_patterns' => [
+            regsubst($site_hostname, '\.', '\.'),
+          ],
+        },
+        'config_directories' => {
+          'active' => "${sites_dir}/config/active",
+          'staging' => "${sites_dir}/config/staging",
+        },
+        'config' => {
+        },
+      }, $settings)
     }
     default: {
       $settings_template = "drupal/settings.local.php.erb"
+      $_settings = merge({
+        'databases' => {
+          'default' => {
+            'default' => {
+              'driver' => 'mysql',
+              'database' => $title,
+              'username' => 'root',
+              'password' => '',
+              'host' => 'localhost',
+              'prefix' => '',
+              'collation' => 'utf8_general_ci',
+            },
+          },
+        },
+        'settings' => {
+          'file_temporary_path' => '/tmp',
+          'file_public_path' => "${sites_dir}/files",
+          'file_private_path' => "${sites_dir}/private",
+        },
+      }, $settings)
     }
   }
 
   # configure site directory
-  file { $sites_dir:
+  file { "${drupalroot}/${sites_dir}":
     ensure => directory,
     owner => $user,
     group => $group,
-    mode => 755,
+    mode => '755',
   }
-  file { "${sites_dir}/settings.local.php":
+  file { "${drupalroot}/${sites_dir}/settings.local.php":
     ensure => file,
     content => template($settings_template),
     owner => $user,
     group => $group,
-    mode => 644,
-    require => File[$sites_dir],
+    mode => '644',
+    require => File["${drupalroot}/${sites_dir}"],
   }
   if $write_settings {
     $settings_source = 'puppet:///modules/drupal/settings.php'
@@ -133,35 +182,44 @@ define drupal::site::multisite (
   else {
     $settings_source = undef
   }
-  file { "${sites_dir}/settings.php":
+  file { "${drupalroot}/${sites_dir}/settings.php":
     ensure => file,
     source => $settings_source,
     owner => $user,
     group => $group,
-    mode => 444,
-    require => File[$sites_dir],
+    mode => '444',
+    require => File["${drupalroot}/${sites_dir}"],
   }
   file {[
-      "${sites_dir}/files",
-      "${sites_dir}/private",
+      "${drupalroot}/${sites_dir}/files",
+      "${drupalroot}/${sites_dir}/private",
     ]:
     ensure => directory,
-    mode => 770,
+    mode => '770',
     owner => $user,
     group => $group,
-    require => File[$sites_dir],
+    require => File["${drupalroot}/${sites_dir}"],
   }
 
   # drush
+  $dotdrush_dir = "${::drupal::home}/.drush"
+  if ! defined(File[$dotdrush_dir]) {
+    file { "${::profile::home}/.drush":
+      ensure => directory,
+      owner => $::drupal::user,
+      group => $::drupal::user,
+    }
+  }
   $local_alias = "local.${name}"
   $local_alias_values = {
     uri => $drush_uri,
     root => $drupalroot,
   }
   file { "drush alias for ${name}":
-    path => "${drupal::home}/.drush/${local_alias}.alias.drushrc.php",
+    path => "${::drupal::home}/.drush/${local_alias}.alias.drushrc.php",
     ensure => 'file',
     content => template('drupal/local.alias.drushrc.php.erb'),
-    owner => $user,
+    owner => $::drupal::user,
+    group => $::drupal::user,
   }
 }

@@ -5,15 +5,14 @@
  * Drupal site-specific configuration file.
  */
 
-require_once dirname(__FILE__) . "../default/default.settings.php";
+require_once dirname(__FILE__) . "/../default/default.settings.php";
 
-<% @settings.each do |var_name, var_hash| -%>
+<% @_settings.each do |var_name, var_hash| -%>
 <% var_hash.each do |key, val| -%>
 $<%= var_name %>['<%= key %>'] = <%= scope.function_to_php([val]) %>;
 <% end -%>
 <% end -%>
 
+<% if not @_settings.has_key?('hash_salt') -%>
 $settings['hash_salt'] = hash('sha256', serialize($databases));
-
-// @todo move to default.pp
-// $settings['trusted_host_patterns'][] = '^<%= Regexp.quote(@uri) %>$';
+<% end -%>

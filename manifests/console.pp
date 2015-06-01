@@ -1,35 +1,26 @@
 class drupal::console (
   $user = 'root',
   $group = 'root',
-  $src_path = "/usr/local/src",
-  $bin_path = "/usr/local/bin",
+  $src_dir = "/opt/DrupalAppConsole-src",
+  $bin_dir = "/usr/local/bin",
+  $composer_bin = '/usr/local/bin/composer',
+  $composer_home = '/root',
 ) {
 
-  $console_dir = "${src}/DrupalAppConsole"
-  php::ini_setting { 'drupal console php cli phar.readonly':
-    setting => 'phar.readonly',
-    value => 'Off',
-    section => 'phar',
-    sapi => 'cli',
-  }
-  file { $console_dir:
+  file { $src_dir:
     ensure => directory,
     owner => $user,
     group => $group,
   } ~>
-  exec { "curl -LSs http://drupalconsole.com/installer | php":
-    environment => "COMPOSER_HOME=/root",
-    cwd => $console_dir,
-    creates => "${console_dir}/console.phar",
+  exec { 'drupal console install':
+    command => "curl -LSs http://drupalconsole.com/installer | php",
+    environment => "COMPOSER_HOME=${composer_home}",
+    cwd => $src_dir,
     refreshonly => true,
-    require => [
-      Php::Ini_setting['drupal console php cli phar.readonly'],
-      Php::Module['curl'],
-    ],
     timeout => 600,
   } ->
-  file { "${bin_path}/drupal":
+  file { "${bin_dir}/drupal":
     ensure => link,
-    target => "${console_dir}/console.phar",
+    target => "${src_dir}/console.phar",
   }
 }

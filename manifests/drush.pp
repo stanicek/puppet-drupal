@@ -1,15 +1,41 @@
+# Install drush
+# - bin
+#   directory/file name for source and executable.
+# - revision
+#   git revision
+# - default
+#   link $bin_dir/drush to this instance
+# - user
+#   user for file ownership
+# - group
+#   group for file ownership
+# - src_dir
+#   directory to checkout source
+# - bin_dir
+#   directory to symlink executable from
+# - composer_bin
+#   path to composer executable
+# - composer_home
+#   https://getcomposer.org/doc/03-cli.md#composer-home)
+# - modules
+#   list of modules to install for this instance only
 define drupal::drush (
   $bin = $title,
   $revision = '7.x',
   $default = false,
   $user = 'root',
   $group = 'root',
-  $src_path = "/usr/local/src",
-  $bin_path = "/usr/local/bin",
+  $src_dir = "/opt/drush-src",
+  $bin_dir = "/usr/local/bin",
+  $composer_bin = '/usr/local/bin/composer',
+  $composer_home = '/root',
   $modules = [],
 ) {
 
-  vcsrepo { "${src_path}/${bin}":
+  $src_path = "${src_dir}/${bin}"
+  $bin_path = "${src_path}/drush"
+
+  vcsrepo { $src_path:
     ensure => $ensure,
     provider => git,
     source => 'https://github.com/drush-ops/drush.git',
@@ -18,45 +44,58 @@ define drupal::drush (
     user => $user,
     owner => $user,
     group => $group,
-    notify => Exec["${bin} initial run"],
   } ~>
   exec { "${bin} composer install":
-    command => "composer install > composer.log",
-    environment => 'COMPOSER_HOME=/root',
-    cwd => "${src_path}/${bin}",
-    onlyif => "test -f ${src_path}/${bin}/composer.json",
+    command => "${composer_bin} install > composer.log",
+    environment => "COMPOSER_HOME=${composer_home}",
+    cwd => $src_path,
     refreshonly => true,
     user => $user,
-    notify => Exec["${bin} initial run"],
     timeout => 600,
-  }
-
+  } ~>
   exec { "${bin} initial run":
-    command => "${src_path}/${bin}/drush cache-clear drush",
+    command => "${bin_path} -vd",
     user => $user,
     refreshonly => true,
-    require => File[$drush_dir],
   }
 
-  file { "${bin_path}/${bin}":
+  file { "${bin_dir}/${bin}":
     ensure  => link,
-    target  => "${src_path}/${bin}/drush",
-    require => Vcsrepo["${src_path}/${bin}"],
+    target  => $bin_path,
+    require => Vcsrepo[$src_path],
   }
 
   if $default {
-    file { "${bin_path}/drush":
+    file { "${bin_dir}/drush":
       ensure  => link,
-      target  => "${src_path}/${bin}/drush",
-      require => Vcsrepo["${src_path}/${bin}"],
+      target  => $bin_path,
+      require => Vcsrepo[$src_path],
     }
   }
 
   $modules.each |$module| {
-    ::drupal::drush::module { "${bin} ${module}": bin => $bin }
+    ::drupal::drush::module { "${bin} ${module}":
+      module => $module,
+      bin => $bin,
+      require => Exec["${bin} initial run"],
+    }
+  }
+
+  exec { "${bin} cache-clear drush":
+    command => "${bin_path} cache-clear drush",
+    user => $user,
+    refreshonly => true,
+    require => Exec["${bin} initial run"],
   }
 }
 
+# Install a drush module on a single instance, using `drush pm-download`
+# - module
+#   the drush module name
+# - bin
+#   the ::drupal::drush instance
+# - version
+#   drush module version
 define drupal::drush::module (
   $module,
   $bin,
@@ -71,20 +110,20 @@ define drupal::drush::module (
   $bin_path = getparam(::Drupal::Drush[$bin], 'bin_path')
   $user = getparam(::Drupal::Drush[$bin], 'user')
 
-  $destination = "${src_path}/${bin}/commands"
+  $destination = "${src_path}/commands"
 
   if $version {
-    $cmd = "${bin} -y dl ${module}-${version} --destination=${destination}"
+    $cmd = "${bin_path} -y dl ${module}-${version} --destination=${destination}"
   }
   else {
-    $cmd = "${bin} -y dl ${module} --destination=${destination}"
+    $cmd = "${bin_path} -y dl ${module} --destination=${destination}"
   }
 
   exec { "${bin} dl ${module}":
     command => $cmd,
     user => $user,
     creates => "${destination}/${module}",
-    notify => Exec["${bin} initial run"],
-    require => File["${bin_path}/${bin}"],
+    notify => Exec["${bin} cache-clear drush"],
+    require => File["${bin_path}"],
   }
 }

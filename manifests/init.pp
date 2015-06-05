@@ -86,12 +86,24 @@ define drupal::site (
 #   write a settings.php see files/settings.php
 # - settings
 #   settings.local.php values, gets written as php
+# - settings_template
+#   use in place of default settings file template (use to modify
+#   templates/*settings.local.php.erb)
+# - version
+#   major drupal core version
+# - drupalroot
+#   absolute path to drupal codebase
+# - user
+#   system user to assign file ownership
+# - group
+#   system group to assign file ownership
 define drupal::site::multisite (
   $site = 'default',
   $sites_key,
   $drush_uri = "http://${title}.dev",
   $write_settings = true,
   $settings = {},
+  $settings_tempalate = undef,
   $version = 8,
   $drupalroot = "/var/www/${title}",
   $user = 'root',
@@ -105,7 +117,10 @@ define drupal::site::multisite (
 
   case $version {
     8: {
-      $settings_template = "drupal/d8.settings.local.php.erb"
+      $_settings_template = $settings_template ? {
+        undef => "drupal/d8.settings.local.php.erb",
+        default => $settings_template,
+      }
       $_settings = merge({
         'databases' => {
           'default' => {
@@ -137,7 +152,10 @@ define drupal::site::multisite (
       }, $settings)
     }
     default: {
-      $settings_template = "drupal/settings.local.php.erb"
+      $_settings_template = $settings_template ? {
+        undef => "drupal/settings.local.php.erb",
+        default => $settings_template,
+      }
       $_settings = merge({
         'databases' => {
           'default' => {
@@ -170,7 +188,7 @@ define drupal::site::multisite (
   }
   file { "${drupalroot}/${sites_dir}/settings.local.php":
     ensure => file,
-    content => template($settings_template),
+    content => template($_settings_template),
     owner => $user,
     group => $group,
     mode => '644',

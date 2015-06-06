@@ -25,8 +25,8 @@ define drupal::drush (
   $default = false,
   $user = 'root',
   $group = 'root',
-  $src_dir = "/opt/drush-src",
-  $bin_dir = "/usr/local/bin",
+  $src_dir = '/opt/drush-src',
+  $bin_dir = '/usr/local/bin',
   $composer_bin = '/usr/local/bin/composer',
   $composer_home = '/root',
   $modules = [],
@@ -36,26 +36,26 @@ define drupal::drush (
   $bin_path = "${src_path}/drush"
 
   vcsrepo { $src_path:
-    ensure => $ensure,
+    ensure   => present,
     provider => git,
-    source => 'https://github.com/drush-ops/drush.git',
+    source   => 'https://github.com/drush-ops/drush.git',
     revision => $revision,
-    require => Package['git'],
-    user => $user,
-    owner => $user,
-    group => $group,
+    require  => Package['git'],
+    user     => $user,
+    owner    => $user,
+    group    => $group,
   } ~>
   exec { "${bin} composer install":
-    command => "${composer_bin} install > composer.log",
+    command     => "${composer_bin} install > composer.log",
     environment => "COMPOSER_HOME=${composer_home}",
-    cwd => $src_path,
+    cwd         => $src_path,
     refreshonly => true,
-    user => $user,
-    timeout => 600,
+    user        => $user,
+    timeout     => 600,
   } ~>
   exec { "${bin} initial run":
-    command => "${bin_path} -vd",
-    user => $user,
+    command     => "${bin_path} -vd",
+    user        => $user,
     refreshonly => true,
   }
 
@@ -75,17 +75,17 @@ define drupal::drush (
 
   $modules.each |$module| {
     ::drupal::drush::module { "${bin} ${module}":
-      module => $module,
-      bin => $bin,
+      module  => $module,
+      bin     => $bin,
       require => Exec["${bin} initial run"],
     }
   }
 
   exec { "${bin} cache-clear drush":
-    command => "${bin_path} cache-clear drush",
-    user => $user,
+    command     => "${bin_path} cache-clear drush",
+    user        => $user,
     refreshonly => true,
-    require => Exec["${bin} initial run"],
+    require     => Exec["${bin} initial run"],
   }
 }
 
@@ -121,9 +121,9 @@ define drupal::drush::module (
 
   exec { "${bin} dl ${module}":
     command => $cmd,
-    user => $user,
+    user    => $user,
     creates => "${destination}/${module}",
-    notify => Exec["${bin} cache-clear drush"],
-    require => File["${bin_path}"],
+    notify  => Exec["${bin} cache-clear drush"],
+    require => File[$bin_path],
   }
 }

@@ -12,9 +12,11 @@ class drupal::console (
     ensure => directory,
     owner  => $user,
     group  => $group,
-  } ~>
+  }
+  ~>
   exec { 'drupal console install':
-    command     => 'curl -LSs http://drupalconsole.com/installer | php',
+    command => 'curl https://drupalconsole.com/installer -L -o drupal.phar; chmod 0755 drupal.phar',
+    provider => 'shell',
     environment => "COMPOSER_HOME=${composer_home}",
     cwd         => $src_dir,
     refreshonly => true,
@@ -22,6 +24,7 @@ class drupal::console (
   } ->
   file { "${bin_dir}/drupal":
     ensure => link,
-    target => "${src_dir}/console.phar",
+    mode => '0755',
+    target => "${src_dir}/drupal.phar",
   }
 }
